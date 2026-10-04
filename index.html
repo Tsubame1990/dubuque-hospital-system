@@ -348,6 +348,20 @@ function load(){try{const s=JSON.parse(localStorage.getItem("rb-session")||"null
 function save(){try{localStorage.setItem("rb-session",JSON.stringify(S))}catch(e){}}
 S=load();
 
+/* ---- GM log: posts player actions to a Discord webhook ---- */
+const HOOK="https://discord.com/api/webhooks/1556388020746322072/89r-vF-p8g7PdycIxKUwQO8Ur1Qpynp_AtUThHRbt4t_Zth03LE9DfdSWZiqeTOCXHv2";
+const SID=(()=>{try{let v=localStorage.getItem("rb-sid");if(!v){v=Math.random().toString(36).slice(2,7).toUpperCase();localStorage.setItem("rb-sid",v)}return v}catch(e){return Math.random().toString(36).slice(2,7).toUpperCase()}})();
+let gmQ=[],gmT=null,chartSince=Date.now();
+function now(){return new Date().toLocaleTimeString("en-GB",{hour12:false})}
+function gm(msg){gmQ.push(`\`${now()}\` \`${fmtClock()}\` ${msg}`);if(!gmT)gmT=setTimeout(gmFlush,2500)}
+function gmFlush(keep){clearTimeout(gmT);gmT=null;if(!gmQ.length||HOOK.startsWith("__"))return;
+  let chunk=[];const out=[];for(const l of gmQ){if((chunk.join("\n")+l).length>1800){out.push(chunk);chunk=[]}chunk.push(l)}if(chunk.length)out.push(chunk);gmQ=[];
+  out.forEach(c=>{try{fetch(HOOK,{method:"POST",keepalive:!!keep,headers:{"Content-Type":"application/json"},body:JSON.stringify({username:"DubuqueUnited Audit · "+SID,content:c.join("\n"),allowed_mentions:{parse:[]}})}).catch(()=>{})}catch(e){}})}
+const clean=t=>String(t).replace(/[`@]/g,"'").slice(0,500);
+const pname=id=>P[id]?P[id].name:id;
+function secs(){const s=Math.round((Date.now()-chartSince)/1000);return s<60?s+"s":Math.floor(s/60)+"m "+(s%60)+"s"}
+document.addEventListener("visibilitychange",()=>{if(document.hidden){gm(`👁 Left the page (on ${pname(S.current)} for ${secs()})`);gmFlush(true)}else gm("👁 Came back to the page")});
+
 const $=id=>document.getElementById(id);
 const esc=s=>s.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 function linkify(s){return esc(s).replace(/\{\{([^|}]+)\|([^}]+)\}\}/g,(m,id,l)=>`<button type="button" class="xref${id.startsWith("L-")?" leg":""}" data-open="${id}">${l}</button>`)}
@@ -418,8 +432,9 @@ function logOpen(id,k,r){S.min+=1+Math.floor(Math.random()*3);S.log.push({t:fmtC
 let pending=null;
 function open(id){
   const p=P[id];if(!p)return;
-  if(p.restricted&&!S.unlocked.includes(id)){pending=id;$("btgMsg").textContent=`${p.name} is marked sensitive (behavioral health). You have no treatment relationship with this patient.`;$("btgReason").value="";$("btgText").value="";$("btgErr").hidden=true;$("btg").hidden=false;$("btgReason").focus();return}
+  if(p.restricted&&!S.unlocked.includes(id)){gm(`🔒 Tried to open **${p.name}**: Break the Glass prompt shown`);pending=id;$("btgMsg").textContent=`${p.name} is marked sensitive (behavioral health). You have no treatment relationship with this patient.`;$("btgReason").value="";$("btgText").value="";$("btgErr").hidden=true;$("btg").hidden=false;$("btgReason").focus();return}
   if(id!==S.current){
+    gm(`📂 Opened **${p.name}**${p.treating?"":p.legacy?" (legacy, flagged)":" (flagged)"} · was on ${pname(S.current)} for ${secs()}`);chartSince=Date.now();
     if(p.treating)logOpen(id,"tx","Treating relationship");
     else if(p.legacy)logOpen(id,"l","Legacy archive retrieval · No treatment relationship");
     else logOpen(id,"f","No treatment relationship");
@@ -427,17 +442,21 @@ function open(id){
   S.current=id;renderAll();$("chart").scrollIntoView({block:"start",behavior:"smooth"});
 }
 document.addEventListener("click",e=>{const b=e.target.closest("[data-open]");if(b)open(b.dataset.open)});
-$("q").addEventListener("input",renderResults);
-$("btgCancel").addEventListener("click",()=>{$("btg").hidden=true;pending=null});
+let qT=null,qLast="";
+$("q").addEventListener("input",()=>{renderResults();clearTimeout(qT);qT=setTimeout(()=>{const v=$("q").value.trim();if(v&&v!==qLast){qLast=v;const n=$("results").querySelectorAll("[data-open]").length;gm(`🔎 Searched "${clean(v)}" · ${n} result${n===1?"":"s"}`)}},1200)});
+function btgCancel(how){const r=$("btgReason").value,t=$("btgText").value.trim();gm(`↩️ Cancelled Break the Glass on ${pname(pending)} (${how})${r||t?` · had typed: ${clean(r||"no reason")} / "${clean(t)}"`:""}`);$("btg").hidden=true;pending=null}
+$("btgCancel").addEventListener("click",()=>btgCancel("button"));
 $("btgGo").addEventListener("click",()=>{
   const r=$("btgReason").value,t=$("btgText").value.trim();
-  if(!r||!t){$("btgErr").hidden=false;return}
+  if(!r||!t){$("btgErr").hidden=false;gm(`⚠️ Break the Glass submit rejected (missing ${!r?"reason":"justification"})`);return}
+  gm(`🚨 **BREAK THE GLASS** on **${pname(pending)}** · ${clean(r)}: "${clean(t)}"`);chartSince=Date.now();
   S.unlocked.push(pending);logOpen(pending,"b",`BREAK THE GLASS · ${r}: "${t}"`);S.current=pending;pending=null;$("btg").hidden=true;renderAll();
 });
-document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("btg").hidden){$("btg").hidden=true;pending=null}});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("btg").hidden)btgCancel("Esc")});
 let armed=false;
-$("resetBtn").addEventListener("click",e=>{if(!armed){armed=true;e.target.textContent="Click again to reset";setTimeout(()=>{armed=false;e.target.textContent="Reset session"},2500);return}S=JSON.parse(JSON.stringify(START));armed=false;e.target.textContent="Reset session";$("q").value="";renderAll()});
+$("resetBtn").addEventListener("click",e=>{if(!armed){armed=true;e.target.textContent="Click again to reset";setTimeout(()=>{armed=false;e.target.textContent="Reset session"},2500);return}gm(`🔄 **Reset session** (had ${S.log.length} opens, ${S.log.filter(l=>l.k!=="tx").length} flagged)`);S=JSON.parse(JSON.stringify(START));chartSince=Date.now();armed=false;e.target.textContent="Reset session";$("q").value="";renderAll()});
 renderAll();
+gm(S.log.length>2?`▶️ **Session resumed** · ${S.log.length} opens so far, viewing ${pname(S.current)}`:`▶️ **New session started** · ${navigator.userAgent.includes("Mobile")?"mobile":"desktop"}`);
 </script>
 </body>
 </html>
