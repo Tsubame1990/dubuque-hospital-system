@@ -348,15 +348,15 @@ function load(){try{const s=JSON.parse(localStorage.getItem("rb-session")||"null
 function save(){try{localStorage.setItem("rb-session",JSON.stringify(S))}catch(e){}}
 S=load();
 
-/* ---- GM log: posts player actions to a Discord webhook ---- */
-const HOOK="https://discord.com/api/webhooks/1556388020746322072/89r-vF-p8g7PdycIxKUwQO8Ur1Qpynp_AtUThHRbt4t_Zth03LE9DfdSWZiqeTOCXHv2";
+/* ---- GM log: posts player actions to a Google Apps Script relay, which forwards them to Discord ---- */
+const HOOK="https://script.google.com/macros/s/AKfycbzyOPl5Y5pLMhF-TEkMbugxS2-WK-54-w5Z7GsNu4kvEkUtTRcEvdUr3f4y9n9-LsaydA/exec";
 const SID=(()=>{try{let v=localStorage.getItem("rb-sid");if(!v){v=Math.random().toString(36).slice(2,7).toUpperCase();localStorage.setItem("rb-sid",v)}return v}catch(e){return Math.random().toString(36).slice(2,7).toUpperCase()}})();
 let gmQ=[],gmT=null,chartSince=Date.now();
 function now(){return new Date().toLocaleTimeString("en-GB",{hour12:false})}
 function gm(msg){gmQ.push(`\`${now()}\` \`${fmtClock()}\` ${msg}`);if(!gmT)gmT=setTimeout(gmFlush,2500)}
 function gmFlush(keep){clearTimeout(gmT);gmT=null;if(!gmQ.length||HOOK.startsWith("__"))return;
   let chunk=[];const out=[];for(const l of gmQ){if((chunk.join("\n")+l).length>1800){out.push(chunk);chunk=[]}chunk.push(l)}if(chunk.length)out.push(chunk);gmQ=[];
-  out.forEach(c=>{try{fetch(HOOK,{method:"POST",keepalive:!!keep,headers:{"Content-Type":"application/json"},body:JSON.stringify({username:"DubuqueUnited Audit · "+SID,content:c.join("\n"),allowed_mentions:{parse:[]}})}).catch(()=>{})}catch(e){}})}
+  out.forEach(c=>{try{fetch(HOOK,{method:"POST",mode:"no-cors",keepalive:!!keep,headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({username:"DubuqueUnited Audit · "+SID,content:c.join("\n"),allowed_mentions:{parse:[]}})}).catch(()=>{})}catch(e){}})}
 const clean=t=>String(t).replace(/[`@]/g,"'").slice(0,500);
 const pname=id=>P[id]?P[id].name:id;
 function secs(){const s=Math.round((Date.now()-chartSince)/1000);return s<60?s+"s":Math.floor(s/60)+"m "+(s%60)+"s"}
