@@ -1,0 +1,443 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>DubuqueUnited Chart</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Special+Elite&family=Nanum+Pen+Script&display=swap">
+<style>
+/* Layout: clinical EHR shell. Top bar, left patient search, center chart, right audit trail. Stacks on phones. */
+:root{
+  --bg:#eef1f3; --panel:#ffffff; --line:#d5dce1; --fg:#1d2a33; --muted:#5d6d78;
+  --accent:#1f6f78; --accent-soft:#e1eff0; --warn:#a4561a; --warn-soft:#fbeee2;
+  --crit:#b3261e; --crit-soft:#fbe7e6; --ok:#2f6b3a; --ok-soft:#e5f1e6;
+  --bar:#16323a; --bar-fg:#e8f0f2;
+  --paper:#efe6cf; --paper-ink:#2a2418; --paper-line:#c9bc98; --pen:#1d3f8f;
+  --f-ui:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,Menlo,Consolas,monospace;
+  --f-type:"Special Elite","Courier New",Courier,monospace;
+  --f-pen:"Nanum Pen Script","Comic Sans MS",cursive;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#11181c; --panel:#182227; --line:#2a383f; --fg:#dde6ea; --muted:#8fa1aa;
+  --accent:#5fb3bb; --accent-soft:#1b3337; --warn:#e3a06a; --warn-soft:#3a2a1c;
+  --crit:#f08a82; --crit-soft:#3d1f1d; --ok:#8cc898; --ok-soft:#1e3322;
+  --bar:#0b1215; --bar-fg:#dde6ea;
+  --paper:#d9cfb5; --paper-ink:#241f15; --paper-line:#b3a582; --pen:#1d3f8f; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#11181c; --panel:#182227; --line:#2a383f; --fg:#dde6ea; --muted:#8fa1aa;
+  --accent:#5fb3bb; --accent-soft:#1b3337; --warn:#e3a06a; --warn-soft:#3a2a1c;
+  --crit:#f08a82; --crit-soft:#3d1f1d; --ok:#8cc898; --ok-soft:#1e3322;
+  --bar:#0b1215; --bar-fg:#dde6ea;
+  --paper:#d9cfb5; --paper-ink:#241f15; --paper-line:#b3a582; --pen:#1d3f8f; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font:14px/1.5 var(--f-ui);margin:0}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mono{font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+
+.topbar{background:var(--bar);color:var(--bar-fg);display:flex;flex-wrap:wrap;align-items:center;gap:8px 20px;padding:10px 16px}
+.brand{font-weight:600;letter-spacing:.02em}
+.brand small{font-weight:400;opacity:.7;margin-left:8px;font-size:12px}
+.topbar .spacer{flex:1}
+.topbar .who,.topbar .clock{font-size:12px;opacity:.9}
+.topbar .clock{font-family:var(--f-mono)}
+.topbar button{background:transparent;border:1px solid rgba(255,255,255,.25);color:var(--bar-fg);border-radius:4px;padding:3px 10px;font-size:12px;cursor:pointer}
+.topbar button:hover{background:rgba(255,255,255,.08)}
+
+.shell{display:grid;grid-template-columns:260px minmax(0,1fr) 300px;gap:12px;padding:12px 16px;align-items:start}
+@media (max-width:1100px){.shell{grid-template-columns:240px minmax(0,1fr)}.audit{grid-column:1/-1}}
+@media (max-width:720px){.shell{grid-template-columns:minmax(0,1fr)}}
+
+.pane{background:var(--panel);border:1px solid var(--line);border-radius:6px;min-width:0}
+.pane h2{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0;padding:10px 12px;border-bottom:1px solid var(--line);font-weight:600}
+
+.search{padding:10px 12px;display:grid;gap:6px}
+.search label{font-size:12px;color:var(--muted)}
+.search input{width:100%;padding:7px 9px;border:1px solid var(--line);border-radius:4px;background:var(--bg)}
+.results{list-style:none;margin:0;padding:0 0 6px}
+.results li button{display:block;width:100%;text-align:left;background:none;border:0;border-top:1px solid var(--line);padding:8px 12px;cursor:pointer}
+.results li button:hover{background:var(--accent-soft)}
+.results li button[aria-current="true"]{background:var(--accent-soft);box-shadow:inset 3px 0 0 var(--accent)}
+.r-name{font-weight:600;font-size:13px}
+.r-meta{font-size:11.5px;color:var(--muted)}
+.r-tags{display:flex;gap:4px;flex-wrap:wrap;margin-top:3px}
+.empty{padding:12px;color:var(--muted);font-size:13px}
+
+.pill{display:inline-block;font-size:10.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:1px 6px;border-radius:3px;white-space:nowrap}
+.p-dec{background:var(--line);color:var(--fg)}
+.p-res{background:var(--crit-soft);color:var(--crit)}
+.p-leg{background:var(--warn-soft);color:var(--warn)}
+.p-tx{background:var(--ok-soft);color:var(--ok)}
+.p-minor{background:var(--accent-soft);color:var(--accent)}
+
+.chart{overflow:hidden}
+.banner{padding:12px 16px;border-bottom:1px solid var(--line);display:grid;gap:6px}
+.banner .nm{font-size:20px;font-weight:600;text-wrap:balance}
+.banner .facts{display:flex;flex-wrap:wrap;gap:4px 18px;font-size:12.5px;color:var(--muted)}
+.banner .facts b{color:var(--fg);font-weight:500}
+.alertline{font-size:12.5px;padding:6px 16px;background:var(--crit-soft);color:var(--crit);border-bottom:1px solid var(--line)}
+.alertline.soft{background:var(--warn-soft);color:var(--warn)}
+.cbody{padding:12px 16px 18px;display:grid;gap:16px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px}
+.box{border:1px solid var(--line);border-radius:4px}
+.box h3{margin:0;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:7px 10px;border-bottom:1px solid var(--line);background:var(--bg)}
+.kv{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:4px 12px;padding:8px 10px;font-size:13px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;overflow-wrap:anywhere}
+.enc{list-style:none;margin:0;padding:0}
+.enc li{border-top:1px solid var(--line);padding:10px}
+.enc li:first-child{border-top:0}
+.enc .eh{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
+.enc .ed{font-family:var(--f-mono);font-size:12px;color:var(--muted);min-width:86px}
+.enc .et{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--accent);font-weight:600}
+.enc .ett{font-weight:600}
+.enc .eb{margin:6px 0 0;font-size:13px;max-width:72ch;white-space:pre-line}
+.enc .sig{display:block;margin-top:4px;font-size:11.5px;color:var(--muted);font-style:italic}
+.flagline{border-left:3px solid var(--warn);padding-left:8px}
+a.xref,button.xref{background:none;border:0;padding:0;color:var(--accent);text-decoration:underline;text-underline-offset:2px;cursor:pointer;font:inherit}
+button.xref.leg{color:var(--warn)}
+
+/* legacy scan */
+.scanwrap{padding:16px;background:repeating-linear-gradient(135deg,var(--bg),var(--bg) 6px,var(--panel) 6px,var(--panel) 12px)}
+.scan{max-width:620px;margin:0 auto;background:var(--paper);color:var(--paper-ink);font-family:var(--f-type);padding:28px 28px 34px;border:1px solid var(--paper-line);box-shadow:0 2px 10px rgba(0,0,0,.18);position:relative;transform:rotate(-.4deg);filter:contrast(1.04)}
+.scan::after{content:"";position:absolute;inset:0;background:radial-gradient(ellipse at 20% 10%,rgba(255,255,255,.18),transparent 60%),radial-gradient(ellipse at 90% 95%,rgba(90,70,30,.15),transparent 55%);pointer-events:none}
+.scan h4{margin:0 0 2px;font-size:15px;letter-spacing:.06em;text-align:center}
+.scan .sub{text-align:center;font-size:12px;margin-bottom:16px}
+.scan table{width:100%;border-collapse:collapse;font-size:13px}
+.scan td{border:1px solid var(--paper-line);padding:5px 7px;vertical-align:top}
+.scan td:first-child{width:38%;font-size:11.5px;letter-spacing:.04em}
+.pen{font-family:var(--f-pen);color:var(--pen);font-size:21px;line-height:1}
+.scan .stamp{position:absolute;right:22px;top:20px;border:2px solid rgba(150,30,30,.6);color:rgba(150,30,30,.7);font-size:11px;padding:2px 6px;transform:rotate(8deg);letter-spacing:.1em}
+.scan .foot{margin-top:14px;font-size:11px}
+.scanmeta{max-width:620px;margin:10px auto 0;font-size:11.5px;color:var(--muted);font-family:var(--f-mono)}
+
+/* audit */
+.audit .sum{padding:10px 12px;display:grid;gap:6px;border-bottom:1px solid var(--line)}
+.meter{height:6px;background:var(--line);border-radius:3px;overflow:hidden}
+.meter span{display:block;height:100%;background:var(--ok);transition:width .3s}
+.meter.w span{background:var(--warn)}
+.meter.c span{background:var(--crit)}
+.sumtxt{font-size:12.5px}
+.sumtxt b{font-variant-numeric:tabular-nums}
+.log{list-style:none;margin:0;padding:0;max-height:520px;overflow:auto}
+.log li{border-top:1px solid var(--line);padding:7px 12px;font-size:12px;display:grid;gap:2px}
+.log li:first-child{border-top:0}
+.log .lt{font-family:var(--f-mono);color:var(--muted)}
+.log .lp{font-weight:600}
+.log .lr{color:var(--muted)}
+.log li.f{background:var(--warn-soft)}
+.log li.b{background:var(--crit-soft)}
+.log li.f .lr{color:var(--warn)}
+.log li.b .lr{color:var(--crit)}
+.auditnote{font-size:11px;color:var(--muted);padding:8px 12px;border-top:1px solid var(--line)}
+
+/* modal */
+.scrim{position:fixed;inset:0;background:rgba(10,20,25,.55);display:grid;place-items:center;padding:16px;z-index:10}
+.modal{background:var(--panel);border:1px solid var(--line);border-radius:6px;max-width:460px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.35)}
+.modal header{background:var(--crit);color:#fff;padding:10px 14px;font-weight:600;border-radius:6px 6px 0 0}
+.modal .mb{padding:14px;display:grid;gap:10px;font-size:13px}
+.modal label{font-size:12px;color:var(--muted);display:block;margin-bottom:3px}
+.modal select,.modal textarea{width:100%;padding:7px;border:1px solid var(--line);border-radius:4px;background:var(--bg)}
+.modal textarea{min-height:64px;resize:vertical}
+.modal .err{color:var(--crit);font-size:12px}
+.modal footer{display:flex;justify-content:flex-end;gap:8px;padding:0 14px 14px}
+.btn{border:1px solid var(--line);background:var(--bg);border-radius:4px;padding:6px 12px;cursor:pointer}
+.btn.danger{background:var(--crit);border-color:var(--crit);color:#fff}
+.fiction{font-size:11px;color:var(--muted);text-align:center;padding:0 16px 16px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">DubuqueUnited <small>Clinical Records · Dubuque Campus</small></div>
+  <div class="spacer"></div>
+  <div class="who">Logged in: <b>IRENE, MD</b> · Emergency Medicine · Terminal ED-04</div>
+  <div class="clock" id="clock">10/01/2026 03:58</div>
+  <button type="button" id="resetBtn">Reset session</button>
+</header>
+
+<main class="shell">
+  <section class="pane" aria-label="Patient search">
+    <h2>Patient Lookup</h2>
+    <div class="search">
+      <label for="q">Name or MRN</label>
+      <input id="q" type="search" placeholder="e.g. Brandt, 00418827" autocomplete="off">
+    </div>
+    <ul class="results" id="results"></ul>
+  </section>
+
+  <section class="pane chart" id="chart" aria-live="polite"></section>
+
+  <aside class="pane audit" aria-label="Access audit">
+    <h2>Session Access Audit</h2>
+    <div class="sum">
+      <div class="sumtxt" id="sumtxt"></div>
+      <div class="meter" id="meter"><span></span></div>
+    </div>
+    <ul class="log" id="log"></ul>
+    <div class="auditnote">All chart access is recorded and reviewed by Privacy &amp; Compliance. Access without a treatment relationship must have a documented reason.</div>
+  </aside>
+</main>
+<p class="fiction">DubuqueUnited and every record here are fictional, made for a Vampire: The Masquerade chronicle.</p>
+
+<div class="scrim" id="btg" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="btgT">
+    <header id="btgT">Sensitive record: Break the Glass</header>
+    <div class="mb">
+      <div id="btgMsg">This record is marked sensitive (behavioral health). You have no treatment relationship with this patient.</div>
+      <div><label for="btgReason">Reason for access</label>
+        <select id="btgReason">
+          <option value="">Select a reason</option>
+          <option>Emergency treatment</option>
+          <option>Next of kin identification</option>
+          <option>Continuity of care</option>
+          <option>Quality review</option>
+          <option>Other</option>
+        </select></div>
+      <div><label for="btgText">Justification (required, recorded verbatim)</label>
+        <textarea id="btgText"></textarea></div>
+      <div class="err" id="btgErr" hidden>Choose a reason and type a justification to continue.</div>
+    </div>
+    <footer>
+      <button type="button" class="btn" id="btgCancel">Cancel</button>
+      <button type="button" class="btn danger" id="btgGo">Access record</button>
+    </footer>
+  </div>
+</div>
+
+<script>
+/* {{MRN|label}} becomes a link to another chart */
+const P = {
+"00418827":{name:"BRANDT, WALTER H.",dob:"03/11/1948",sex:"M",age:"78",deceased:"10/01/2026 02:31",treating:true,
+ alert:"DECEASED 10/01/2026 02:31 · Pronounced by IRENE, MD",
+ demo:[["MRN","00418827"],["Address","Rhomberg Ave, Dubuque IA"],["Marital status","Widowed"],["PCP","Hollis, R., DO"],["Code status","DNR (IPOST on file)"]],
+ contacts:[["Emergency contact","{{00418828|BRANDT, WANDA M.}} (spouse)"],["Status","Not updated"]],
+ social:[["Lives","Alone"],["Tobacco","Former"],["Alcohol","Occasional"]],
+ enc:[
+ {d:"10/01/2026",t:"ED",tt:"Septic shock, deceased",b:"78M found unresponsive in bed at home by delivery driver, EMS transport. Midline surgical wound covered with kitchen towel and packing tape. Necrotizing soft tissue infection of abdominal wall with crepitus. MAP <50 despite 2L crystalloid and norepinephrine. Lactate 12.0. Multiorgan failure. Not a surgical candidate. Comfort measures.\nPronounced 02:31.\nCause of death: Septic shock secondary to infected surgical wound. Contributing: noncompliance with post-operative care, type 2 diabetes.\nManner: Natural. Medical examiner notified, case declined.\nOrgan procurement notified, ref #IDN-26-4471, not a candidate.",s:"IRENE, MD · 10/01/2026 03:40"},
+ {d:"08/19/2026",t:"Home Health",tt:"Discharge from services",b:"Patient declined further services.",s:"Riverside Home Care"},
+ {d:"08/12/2026",t:"Home Health",tt:"Visit 2",b:"Mild redness at incision edges. Educated patient on signs of infection. Patient verbalizes understanding.",s:"Riverside Home Care"},
+ {d:"08/08/2026",t:"Home Health",tt:"Visit 1",b:"Wound healing, patient irritable.",s:"Riverside Home Care"},
+ {d:"08/05/2026",t:"Clinic",tt:"Surgical follow-up",b:"NO SHOW.",s:"General Surgery"},
+ {d:"07/24/2026",t:"Inpatient",tt:"Strangulated hernia",b:"Emergency surgery, midline incision. Eighteen inches of dead small bowel removed. Closed with staples.\nDischarged 07/30/2026 (6 days) with wound care instructions, a follow-up appointment, and home nursing twice a week.",s:"General Surgery"},
+ {d:"2025",t:"Clinic",tt:"Annual wellness",b:"Weight down again. Missed annual checkup.",s:"Hollis, R., DO"},
+ {d:"2023",t:"Clinic",tt:"Hypertension",b:"Blood pressure high. Prescriptions missed.",s:"Hollis, R., DO"},
+ {d:"2021",t:"Clinic",tt:"Type 2 diabetes",b:"Blood sugar creeping up. Diabetes. Metformin prescribed.\nPharmacy records: filled twice.",s:"Hollis, R., DO"},
+ {d:"2019",t:"Clinic",tt:"Bereavement",b:"Spouse deceased, Wanda Brandt. Patient reports poor sleep, weight down 12 lbs. Referred to grief counseling.\nCounseling: NO SHOW. Rescheduled. NO SHOW.",s:"Hollis, R., DO"},
+ {d:"2018",t:"Clinic",tt:"Annual physical",b:"BP borderline 138/86. Diet and walking advised. Accompanied by wife.",s:"Hollis, R., DO"},
+ {d:"2017",t:"Clinic",tt:"Colonoscopy, 5 yr repeat",b:"No polyps. Repeat in 10 years. (Scheduled by wife.)",s:"Gastroenterology"},
+ {d:"2017",t:"Clinic",tt:"Ventral hernia",b:"Bulge slightly larger. Wife requests surgical referral. Patient declines.",s:"Hollis, R., DO"},
+ {d:"2016",t:"Clinic",tt:"Ventral hernia, new",b:"Soft reducible bulge above umbilicus. Elective repair discussed. Wife in favor. Patient declines at this time.",s:"Hollis, R., DO"},
+ {d:"2015",t:"Surgery",tt:"Cataract, left eye",b:"Uncomplicated. Wife drove patient home.",s:"Ophthalmology"},
+ {d:"2014",t:"Clinic",tt:"Annual physical",b:"Doing well. Accompanied by wife. Flu vaccine given.",s:"Hollis, R., DO"},
+ {d:"2013",t:"Clinic",tt:"Right knee osteoarthritis",b:"Cortisone injection. Home exercises.",s:"Orthopedics"},
+ {d:"2012",t:"Clinic",tt:"Screening colonoscopy",b:"Two small benign polyps removed. Repeat in 5 years.",s:"Gastroenterology"},
+ {d:"03/2011",t:"Clinic",tt:"Insomnia",b:"Poor sleep x 4 weeks. Patient declines to discuss stressors. Trazodone low dose.",s:"Hollis, R., DO"},
+ {d:"2010",t:"Clinic",tt:"Annual physical",b:"Lipids improved on atorvastatin. Flu vaccine given.",s:"Hollis, R., DO"},
+ {d:"2009",t:"Clinic",tt:"Annual physical",b:"Hyperlipidemia. Atorvastatin started.",s:"Hollis, R., DO"},
+ {d:"2008",t:"Clinic",tt:"Annual physical",b:"Doing well. Accompanied by wife.",s:"Hollis, R., DO"},
+ {d:"2006",t:"Clinic",tt:"Low back strain",b:"Lifting injury. NSAIDs, rest.",s:"Hollis, R., DO"},
+ {d:"2004",t:"Clinic",tt:"Annual physical",b:"First visit in new electronic record. No acute concerns.",s:"Hollis, R., DO"},
+ {d:"pre-2004",t:"Note",tt:"Legacy records",b:"Earlier documentation not yet digitized.",s:"Health Information Management"}
+ ]},
+"00418828":{name:"BRANDT, WANDA M.",dob:"06/02/1951",sex:"F",age:"68 at death",deceased:"09/14/2019",
+ alert:"DECEASED 09/14/2019",
+ demo:[["MRN","00418828"],["Address","Rhomberg Ave, Dubuque IA"],["Marital status","Married"],["OB history","G1 P1. SVD 03/17/1978, this facility. Infant: {{L-1978-031|Baby Boy Brandt (legacy record)}}"]],
+ contacts:[["Emergency contact","{{00418827|BRANDT, WALTER H.}} (spouse)"],["Children","{{00592140|BRANDT, DANIEL W.}} (son)"]],
+ social:[["Faith","Catholic, St. Columbkille parish"],["Tobacco","Never"]],
+ enc:[
+ {d:"09/14/2019",t:"Inpatient",tt:"Deceased, inpatient hospice",b:"Metastatic pancreatic adenocarcinoma. Comfort care. Husband at bedside earlier in the evening, went home to rest. Patient died 03:10.",s:"Hospitalist"},
+ {d:"09/12/2019",t:"Palliative",tt:"Palliative care consult",b:"Patient alert, oriented, calm. Pain 2/10 on hydromorphone PCA. Mild nausea, controlled with ondansetron. Minimal oral intake, sips only.\nGoals of care: comfort focused. DNR/DNI confirmed. Patient prefers to remain in hospital rather than go home, states her husband \"shouldn't have to find me.\"\nSpiritual care: Catholic. Anointing of the sick given by parish priest this afternoon.\nFamily: husband present during visit, quiet, asked no questions. No other family listed.\nPlan: continue comfort measures, mouth care, reposition q2h. Palliative will follow daily.",s:"I. LEIGH, RN · Palliative Care"},
+ {d:"06/2019",t:"Oncology",tt:"Pancreatic adenocarcinoma, stage IV",b:"Liver metastases. Treatment options discussed. Patient declines chemotherapy. Referred to hospice.",s:"Oncology"},
+ {d:"05/2019",t:"Clinic",tt:"Jaundice, weight loss",b:"Painless jaundice, weight down 9 lb. CT: pancreatic head mass. Referred to oncology.",s:"Hollis, R., DO"},
+ {d:"2018",t:"Clinic",tt:"Annual physical",b:"Doing well. Mammogram normal. Flu vaccine given.",s:"Hollis, R., DO"},
+ {d:"2016",t:"Clinic",tt:"Hypothyroidism",b:"TSH elevated. Levothyroxine started.",s:"Hollis, R., DO"},
+ {d:"2014",t:"Clinic",tt:"Bone density scan",b:"Osteoporosis, hip. Alendronate continued. Calcium and vitamin D.",s:"Hollis, R., DO"},
+ {d:"2012",t:"Clinic",tt:"Annual physical",b:"Mammogram normal. Flu vaccine given.",s:"Hollis, R., DO"},
+ {d:"2011",t:"Clinic",tt:"Bereavement",b:"Son deceased 02/2011. Poor sleep. Referred to grief counseling. Attended 6 sessions.",s:"Hollis, R., DO"},
+ {d:"02/06/2011",t:"Note",tt:"Next of kin notification",b:"Notified by ED of death of son {{00592140|BRANDT, DANIEL W.}}. Came alone to identify. Husband did not attend.",s:"ED Social Work"},
+ {d:"2007",t:"Clinic",tt:"Bone density scan",b:"Osteoporosis following hip fracture. Alendronate started.",s:"Hollis, R., DO"},
+ {d:"2006",t:"Rehab",tt:"Physical therapy, right hip",b:"12 sessions following ORIF. Walking without cane at discharge.",s:"Physical Therapy"},
+ {d:"11/12/2005",t:"ED",tt:"Right hip fracture",b:"Patient states she fell down basement stairs.\n[flag]RN note: Bruising to bilateral upper arms in grip pattern, inconsistent with reported mechanism. Patient tearful, declines to discuss. Husband at bedside states son \"won't be coming around anymore.\" SW consult offered, declined.",s:"ED · ORIF 11/13/2005"},
+ {d:"2004",t:"Clinic",tt:"Annual physical",b:"First visit in new electronic record. Mammogram normal.",s:"Hollis, R., DO"},
+ {d:"03/17/1978",t:"L&D",tt:"Spontaneous vaginal delivery",b:"Liveborn male. Paper record, see {{L-1978-031|legacy archive scan}}.",s:"Obstetrics"},
+ {d:"pre-2004",t:"Note",tt:"Legacy records",b:"Earlier documentation not yet digitized.",s:"Health Information Management"}
+ ]},
+"00592140":{name:"BRANDT, DANIEL W.",dob:"03/17/1978",sex:"M",age:"32 at death",deceased:"02/06/2011",restricted:true,
+ alert:"DECEASED 02/06/2011 · SENSITIVE RECORD: BEHAVIORAL HEALTH",
+ demo:[["MRN","00592140"],["Born","This facility. {{L-1978-031|Legacy newborn record}}"],["Last address","No fixed address"]],
+ contacts:[["Mother","{{00418828|BRANDT, WANDA M.}}"],["Father","{{00418827|BRANDT, WALTER H.}}"],["Emergency contact","Mother"],["Children","{{00611140|LEWIS, ELIJAH}} (son, paternity established by court order 2008)"]],
+ social:[["Substance use","Opioid use disorder, alcohol use disorder"],["Legal","DPD involvement (see 11/2005)"]],
+ enc:[
+ {d:"02/06/2011",t:"ED",tt:"DOA, suspected opioid overdose",b:"EMS found patient unresponsive in vehicle, Kerper Blvd. Asystole on arrival. Pronounced 05:52. Next of kin: mother notified, came to identify. Father declined to come.",s:"ED"},
+ {d:"04/2008",t:"Lab",tt:"Genetic paternity testing, court ordered",b:"Buccal swab collected under chain of custody. Ordered by Iowa District Court for Dubuque County, child support action initiated by Iowa Child Support Recovery Unit.\nAlleged father: Brandt, Daniel W. Mother: {{00611093|Lewis, Keisha R.}} Child: {{00611140|Lewis, Elijah}}\nResult: probability of paternity 99.99%.\nPatient arrived 40 min late, escorted by deputy. Declined to view results.",s:"Laboratory · Chain of Custody"},
+ {d:"05/22/2007",t:"ED",tt:"Forearm abscess",b:"Injection-related abscess, left forearm. I&D performed. Declined substance use referral. Left before discharge instructions.",s:"ED"},
+ {d:"11/12/2005",t:"ED",tt:"Hand lacerations, intoxicated",b:"Brought by Dubuque PD from parents' residence. Lacerations bilateral hands (window glass). BAC 0.19. Combative on arrival. Declined to answer questions about events. Discharged to police custody.",s:"ED"},
+ {d:"2004",t:"ED",tt:"Alcohol intoxication",b:"Found in public, brought by police. Observation, released when sober. Declined referral.",s:"ED"},
+ {d:"pre-2004",t:"Note",tt:"Legacy records",b:"Earlier documentation not yet digitized.",s:"Health Information Management"}
+ ]},
+"L-1978-031":{name:"BABY BOY BRANDT",dob:"03/17/1978",sex:"M",legacy:true,
+ alert:"LEGACY PAPER RECORD · Scanned from microfilm reel L-1978-031"},
+"00611093":{name:"LEWIS, KEISHA R.",dob:"06/20/1990",sex:"F",age:"36",
+ demo:[["MRN","00611093"],["Address","Jackson St, Dubuque IA"],["OB history","G1 P1"]],
+ contacts:[["Emergency contact","Lewis, Doreen (mother)"],["Children","{{00611140|LEWIS, ELIJAH}} (son)"]],
+ social:[],
+ enc:[
+ {d:"03/2025",t:"Clinic",tt:"Right shoulder tendinitis",b:"Repetitive overhead work. NSAIDs, physical therapy referral. Work restrictions 2 weeks.",s:"Occupational Health"},
+ {d:"2022",t:"Clinic",tt:"Annual physical",b:"BP 142/90, recheck in 3 months. Otherwise well.",s:"Family Medicine"},
+ {d:"11/2020",t:"Clinic",tt:"COVID-19, positive",b:"Workplace outbreak. Mild symptoms. Isolation 10 days.",s:"Family Medicine"},
+ {d:"2018",t:"Surgery",tt:"Carpal tunnel release, right",b:"Occupational. Uncomplicated. Return to light duty 4 weeks.",s:"Hand Surgery"},
+ {d:"2016",t:"ED",tt:"Chemical splash, left eye",b:"Sanitizing solution at work. Irrigation, no corneal injury. Released.",s:"ED"},
+ {d:"2014",t:"ED",tt:"Low back strain",b:"Lifting injury at work. NSAIDs, muscle relaxant, 3 days off.",s:"ED"},
+ {d:"2012",t:"Clinic",tt:"Carpal tunnel syndrome, right",b:"Occupational. Night splint. Workers' compensation claim filed.",s:"Occupational Health"},
+ {d:"2010",t:"ED",tt:"Laceration, left hand",b:"Knife injury at work. 6 sutures. Tetanus updated. Workers' compensation.",s:"ED"},
+ {d:"06/2007",t:"Clinic",tt:"Postpartum check",b:"Recovering well. Breastfeeding. Contraception discussed. WIC and Medicaid enrollment confirmed.",s:"Obstetrics"},
+ {d:"05/14/2007",t:"L&D",tt:"SVD, liveborn male",b:"16 y/o G1. Male infant 6 lb 11 oz, see {{00611140|LEWIS, ELIJAH}}. Father of baby not present, not named.\nSW: adolescent mother, lives with her mother. Supportive family.\nVisitors (PPD0 to PPD2): Lewis, Doreen (mother). Lewis, Andre (brother). Lewis, Tasha (sister). Harris, Bernice (grandmother). Harris, Calvin (uncle). Brandt, Wanda.",s:"Obstetrics"},
+ {d:"pre-2004",t:"Note",tt:"Legacy records",b:"Earlier documentation not yet digitized.",s:"Health Information Management"}
+ ]},
+"00611140":{name:"LEWIS, ELIJAH",dob:"05/14/2007",sex:"M",age:"19",
+ demo:[["MRN","00611140"],["Address","Jackson St, Dubuque IA"],["Occupation","Warehouse associate; delivery driver (app-based)"]],
+ contacts:[["Mother","{{00611093|LEWIS, KEISHA R.}}"],["Father","{{00592140|BRANDT, DANIEL W.}} (paternity established by court order, 04/2008)"],["Children","{{00888512|LEWIS, MICHAELLA J.}} (daughter)"]],
+ social:[["Lives with","Mother, daughter"]],
+ enc:[
+ {d:"06/2026",t:"ED",tt:"Laceration, left palm",b:"Box cutter injury at warehouse. 4 sutures. Tetanus up to date. Patient asks to be done quickly, has delivery shift tonight.",s:"ED"},
+ {d:"03/2025",t:"Clinic",tt:"Pre-employment physical",b:"Warehouse position, day shift. Drug screen negative. Cleared for lifting up to 50 lb. Patient also works evenings, delivery. Daughter age 2 at home.",s:"Occupational Health"},
+ {d:"2024",t:"Clinic",tt:"Well visit",b:"Reports no longer attending school, working full time. Asthma quiet, no inhaler use in 1 year. Mood screen negative.",s:"Family Medicine"},
+ {d:"01/18/2023",t:"Note",tt:"Father of newborn",b:"Listed as father of {{00888512|LEWIS, MICHAELLA J.}}. Age 15. Present for delivery.",s:"Obstetrics"},
+ {d:"2022",t:"Clinic",tt:"Sports physical",b:"High school basketball. Cleared. HPV and meningococcal vaccines given.",s:"Pediatrics"},
+ {d:"2021",t:"ED",tt:"Right ankle sprain",b:"Basketball. X-ray negative. Brace, crutches 1 week.",s:"Pediatric ED"},
+ {d:"2018",t:"Clinic",tt:"Well child, 11 yr",b:"Growth normal. Dental referral, two cavities. Tdap given.",s:"Pediatrics"},
+ {d:"2014",t:"ED",tt:"Asthma exacerbation",b:"Nebulizer x2, discharged home with mother.",s:"Pediatric ED"},
+ {d:"2012",t:"ED",tt:"Forearm fracture",b:"Fell from playground equipment. Cast applied.",s:"Pediatric ED"},
+ {d:"2011",t:"Clinic",tt:"Asthma, new diagnosis",b:"Wheezing with colds. Albuterol inhaler. Mother works nights, grandmother brings patient.",s:"Pediatrics"},
+ {d:"2008",t:"Clinic",tt:"Well child, 12 mo",b:"Growth normal. Vaccines given. Eyes now brown.",s:"Pediatrics"},
+ {d:"05/14/2007",t:"Newborn",tt:"Birth record",b:"Born 05/14/2007 23:48. 6 lb 11 oz. Mother {{00611093|LEWIS, KEISHA R.}}, age 16.\nFather: not listed at birth. FOB not present.\nName: Elijah Lewis.\nEyes: gray-blue, expected to darken.",s:"Newborn Nursery"}
+ ]},
+"00888512":{name:"LEWIS, MICHAELLA J.",dob:"01/18/2023",sex:"F",age:"3",minor:true,
+ demo:[["MRN","00888512"],["Preferred name","\"Mice\" / \"Mouse\""],["Address","Jackson St, Dubuque IA"]],
+ contacts:[["Father","{{00611140|LEWIS, ELIJAH}} (guardian)"],["Mother","Carter, Jasmine (attending college, Iowa City)"],["Also authorized","{{00611093|LEWIS, KEISHA R.}} (paternal grandmother)"]],
+ social:[["Lives with","Father, paternal grandmother"]],
+ enc:[
+ {d:"02/2026",t:"Pediatrics",tt:"Well child, 3 yr",b:"Growth and development normal. Talking in full sentences. Vision and hearing screen passed. Flu vaccine given. Accompanied by father.",s:"Pediatrics"},
+ {d:"10/2025",t:"ED",tt:"Fever",b:"Brought by father at 01:40. Temp 39.2 C, viral illness, well appearing. Ibuprofen given, discharged home. Father attentive, asked good questions.",s:"Pediatric ED"},
+ {d:"06/2025",t:"Pediatrics",tt:"Well child, 2 yr",b:"Growth normal. Vaccines up to date. Dental visit recommended. Accompanied by grandmother.",s:"Pediatrics"},
+ {d:"11/2024",t:"Pediatrics",tt:"Ear infection, left",b:"Amoxicillin 10 days. Accompanied by grandmother.",s:"Pediatrics"},
+ {d:"01/2024",t:"Pediatrics",tt:"Well child, 12 mo",b:"Walking. Growth on track. MMR and varicella given. Accompanied by father and grandmother.",s:"Pediatrics"},
+ {d:"2023",t:"Pediatrics",tt:"Well child, 2 / 4 / 6 / 9 mo",b:"All visits attended. Vaccines on schedule. Thriving.",s:"Pediatrics"},
+ {d:"01/18/2023",t:"Newborn",tt:"Birth record",b:"Female, 7 lb 0 oz. Father {{00611140|LEWIS, ELIJAH}} (15), mother Carter, Jasmine (16).\nSW: young parents, paternal grandmother {{00611093|Keisha Lewis}} supportive.\nEyes: blue.",s:"Newborn Nursery"}
+ ]},
+"00104552":{name:"BRANDT, WALTER J.",dob:"09/02/1922",sex:"M",age:"76 at death",deceased:"04/1999",
+ demo:[["MRN","00104552"],["Address","Asbury, IA"]],contacts:[["Note","No relation to MRN 00418827 on file"]],social:[],
+ enc:[{d:"04/1999",t:"Inpatient",tt:"Deceased",b:"CHF exacerbation.",s:"Hospitalist"}]},
+"00330918":{name:"LEWIS, KEISHA M.",dob:"02/11/1975",sex:"F",age:"51",
+ demo:[["MRN","00330918"],["Address","Peosta, IA"]],contacts:[],social:[],
+ enc:[{d:"09/2026",t:"Clinic",tt:"Annual wellness",b:"No concerns.",s:"Family Medicine"}]}
+};
+
+const START = {log:[
+  {t:"02:18",mrn:"00418827",k:"tx",r:"Treating relationship · ED attending"},
+  {t:"03:40",mrn:"00418827",k:"tx",r:"Treating relationship · Death documentation signed"}
+ ],min:238,current:"00418827",unlocked:[]};
+let S;
+function load(){try{const s=JSON.parse(localStorage.getItem("rb-session")||"null");if(s&&s.log)return s}catch(e){}return JSON.parse(JSON.stringify(START))}
+function save(){try{localStorage.setItem("rb-session",JSON.stringify(S))}catch(e){}}
+S=load();
+
+const $=id=>document.getElementById(id);
+const esc=s=>s.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function linkify(s){return esc(s).replace(/\{\{([^|}]+)\|([^}]+)\}\}/g,(m,id,l)=>`<button type="button" class="xref${id.startsWith("L-")?" leg":""}" data-open="${id}">${l}</button>`)}
+function fmtClock(){const h=Math.floor(S.min/60)%24,m=S.min%60;return String(h).padStart(2,"0")+":"+String(m).padStart(2,"0")}
+function tick(){$("clock").textContent="10/01/2026 "+fmtClock()}
+
+function tags(p){let t="";if(p.deceased)t+='<span class="pill p-dec">Deceased</span>';if(p.restricted)t+='<span class="pill p-res">Sensitive</span>';if(p.legacy)t+='<span class="pill p-leg">Legacy scan</span>';if(p.treating)t+='<span class="pill p-tx">Your patient</span>';if(p.minor)t+='<span class="pill p-minor">Minor</span>';return t}
+
+function renderResults(){
+  const q=$("q").value.trim().toLowerCase();
+  const ids=Object.keys(P).filter(id=>{const p=P[id];if(p.legacy&&!q)return false;if(!q)return S.log.some(l=>l.mrn===id);return p.name.toLowerCase().includes(q)||id.toLowerCase().includes(q)||p.name.toLowerCase().replace(",","").includes(q)});
+  $("results").innerHTML=ids.length?ids.map(id=>{const p=P[id];return `<li><button type="button" data-open="${id}" aria-current="${S.current===id}"><div class="r-name">${p.name}</div><div class="r-meta mono">${p.legacy?"Microfilm "+id:"MRN "+id} · DOB ${p.dob}</div><div class="r-tags">${tags(p)}</div></button></li>`}).join(""):`<li class="empty">${q?"No patients match.":"Search by name or MRN. Recently opened charts appear here."}</li>`;
+}
+
+function kv(rows){return rows&&rows.length?`<dl class="kv">${rows.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${linkify(v)}</dd>`).join("")}</dl>`:'<div class="empty">None on file.</div>'}
+function body(b){return b.split("\n").map(line=>line.startsWith("[flag]")?`<span class="flagline">${linkify(line.slice(6))}</span>`:linkify(line)).join("\n")}
+
+function renderChart(){
+  const id=S.current,p=P[id],c=$("chart");
+  if(p.legacy){
+    c.innerHTML=`<div class="banner"><div class="nm">BABY BOY BRANDT</div><div class="facts"><span>Record <b class="mono">L-1978-031</b></span><span>Born <b>03/17/1978 04:12</b></span><span>${tags(p)}</span></div></div>
+    <div class="alertline soft">${p.alert}. Paper record from before electronic charting.</div>
+    <div class="scanwrap"><div class="scan">
+      <div class="stamp">MEDICAL RECORDS</div>
+      <h4>DUBUQUE UNITED HOSPITAL</h4><div class="sub">NEWBORN NURSERY RECORD · DUBUQUE, IOWA</div>
+      <table>
+        <tr><td>INFANT</td><td>Baby Boy BRANDT &nbsp;<span class="pen">Daniel Walter</span></td></tr>
+        <tr><td>DATE / TIME OF BIRTH</td><td>3-17-78 &nbsp; 0412</td></tr>
+        <tr><td>MOTHER</td><td>Wanda M. Brandt, age 26 &nbsp; G1 P1</td></tr>
+        <tr><td>FATHER</td><td>Walter H. Brandt, age 29</td></tr>
+        <tr><td>WEIGHT / LENGTH</td><td>7 lb 4 oz &nbsp;/&nbsp; 20 in</td></tr>
+        <tr><td>APGAR 1 / 5 MIN</td><td>8 / 9</td></tr>
+        <tr><td>EYES</td><td><span class="pen">blue</span></td></tr>
+        <tr><td>FEEDING</td><td>Breast</td></tr>
+        <tr><td>NURSE'S REMARKS</td><td><span class="pen">Healthy boy. Father in nursery window all night, would not go home.</span></td></tr>
+      </table>
+      <div class="foot">Discharged with mother 3-20-78. &nbsp; R.N. <span class="pen">M. Kessler</span></div>
+    </div>
+    <div class="scanmeta">Scanned 2011-03 from microfilm reel L-1978-031, frame 0447. Linked: <button type="button" class="xref" data-open="00418828">BRANDT, WANDA M.</button> · <button type="button" class="xref" data-open="00592140">BRANDT, DANIEL W.</button></div></div>`;
+    return;
+  }
+  c.innerHTML=`<div class="banner"><div class="nm">${p.name}</div>
+    <div class="facts"><span>MRN <b class="mono">${id}</b></span><span>DOB <b class="mono">${p.dob}</b></span><span>Age <b>${p.age}</b></span><span>Sex <b>${p.sex}</b></span><span>${tags(p)}</span></div></div>
+    ${p.alert?`<div class="alertline${p.restricted?"":" soft"}">${p.alert}</div>`:""}
+    ${!p.treating?`<div class="alertline soft">No treatment relationship. This access is flagged for compliance review.</div>`:""}
+    <div class="cbody">
+      <div class="grid2">
+        <div class="box"><h3>Demographics</h3>${kv(p.demo)}</div>
+        <div class="box"><h3>Contacts &amp; Relationships</h3>${kv(p.contacts)}</div>
+        <div class="box"><h3>Social History</h3>${kv(p.social)}</div>
+      </div>
+      <div class="box"><h3>Encounters &amp; Notes</h3><ul class="enc">${p.enc.map(e=>`<li><div class="eh"><span class="ed">${e.d}</span><span class="et">${e.t}</span><span class="ett">${esc(e.tt)}</span></div><p class="eb">${body(e.b)}<span class="sig">${esc(e.s)}</span></p></li>`).join("")}</ul></div>
+    </div>`;
+}
+
+function renderLog(){
+  const flagged=S.log.filter(l=>l.k!=="tx").length,btg=S.log.filter(l=>l.k==="b").length;
+  $("log").innerHTML=S.log.slice().reverse().map(l=>`<li class="${l.k==="f"||l.k==="l"?"f":l.k==="b"?"b":""}"><span class="lt">10/01/2026 ${l.t} · IRENE, MD · ED-04</span><span class="lp">${P[l.mrn].name}</span><span class="lr">${esc(l.r)}</span></li>`).join("");
+  const pct=Math.min(100,flagged/5*100);
+  const m=$("meter");m.className="meter"+(flagged>=5?" c":flagged>=3?" w":"");m.firstElementChild.style.width=pct+"%";
+  $("sumtxt").innerHTML=`<b>${S.log.length}</b> chart opens this session · <b>${flagged}</b> flagged · <b>${btg}</b> break-the-glass<br>${flagged>=5?"Automatic compliance review triggered.":flagged>=3?"Approaching automatic review threshold (5 flagged).":"Within normal pattern."}`;
+}
+
+function renderAll(){renderResults();renderChart();renderLog();tick();save()}
+
+function logOpen(id,k,r){S.min+=1+Math.floor(Math.random()*3);S.log.push({t:fmtClock(),mrn:id,k,r})}
+
+let pending=null;
+function open(id){
+  const p=P[id];if(!p)return;
+  if(p.restricted&&!S.unlocked.includes(id)){pending=id;$("btgMsg").textContent=`${p.name} is marked sensitive (behavioral health). You have no treatment relationship with this patient.`;$("btgReason").value="";$("btgText").value="";$("btgErr").hidden=true;$("btg").hidden=false;$("btgReason").focus();return}
+  if(id!==S.current){
+    if(p.treating)logOpen(id,"tx","Treating relationship");
+    else if(p.legacy)logOpen(id,"l","Legacy archive retrieval · No treatment relationship");
+    else logOpen(id,"f","No treatment relationship");
+  }
+  S.current=id;renderAll();$("chart").scrollIntoView({block:"start",behavior:"smooth"});
+}
+document.addEventListener("click",e=>{const b=e.target.closest("[data-open]");if(b)open(b.dataset.open)});
+$("q").addEventListener("input",renderResults);
+$("btgCancel").addEventListener("click",()=>{$("btg").hidden=true;pending=null});
+$("btgGo").addEventListener("click",()=>{
+  const r=$("btgReason").value,t=$("btgText").value.trim();
+  if(!r||!t){$("btgErr").hidden=false;return}
+  S.unlocked.push(pending);logOpen(pending,"b",`BREAK THE GLASS · ${r}: "${t}"`);S.current=pending;pending=null;$("btg").hidden=true;renderAll();
+});
+document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("btg").hidden){$("btg").hidden=true;pending=null}});
+let armed=false;
+$("resetBtn").addEventListener("click",e=>{if(!armed){armed=true;e.target.textContent="Click again to reset";setTimeout(()=>{armed=false;e.target.textContent="Reset session"},2500);return}S=JSON.parse(JSON.stringify(START));armed=false;e.target.textContent="Reset session";$("q").value="";renderAll()});
+renderAll();
+</script>
+</body>
+</html>
