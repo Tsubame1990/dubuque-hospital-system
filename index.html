@@ -210,6 +210,21 @@ button.xref.leg{color:var(--warn)}
   </div>
 </div>
 
+<div class="scrim" id="who" hidden>
+<div class="modal" role="dialog" aria-modal="true" aria-labelledby="whoT">
+<header id="whoT" style="background:var(--accent)">Who's playing?</header>
+<div class="mb">
+<div>Enter your name or character name so the GM knows whose session this is. Asked once per browser.</div>
+<div><label for="whoName">Name</label>
+<input id="whoName" type="text" maxlength="24" autocomplete="off" style="width:100%;padding:7px;border:1px solid var(--line);border-radius:4px;background:var(--bg)"></div>
+</div>
+<footer>
+<button type="button" class="btn" id="whoSkip">Skip</button>
+<button type="button" class="btn" id="whoGo" style="background:var(--accent);border-color:var(--accent);color:#fff">Start</button>
+</footer>
+</div>
+</div>
+
 <script>
 /* {{MRN|label}} becomes a link to another chart */
 const P = {
@@ -351,12 +366,13 @@ S=load();
 /* ---- GM log: posts player actions to a Google Apps Script relay, which forwards them to Discord ---- */
 const HOOK="https://script.google.com/macros/s/AKfycbzyOPl5Y5pLMhF-TEkMbugxS2-WK-54-w5Z7GsNu4kvEkUtTRcEvdUr3f4y9n9-LsaydA/exec";
 const SID=(()=>{try{let v=localStorage.getItem("rb-sid");if(!v){v=Math.random().toString(36).slice(2,7).toUpperCase();localStorage.setItem("rb-sid",v)}return v}catch(e){return Math.random().toString(36).slice(2,7).toUpperCase()}})();
+let PN=(()=>{try{return localStorage.getItem("rb-name")||""}catch(e){return ""}})(),whoOpen=false;
 let gmQ=[],gmT=null,chartSince=Date.now();
 function now(){return new Date().toLocaleTimeString("en-GB",{hour12:false})}
 function gm(msg){gmQ.push(`\`${now()}\` \`${fmtClock()}\` ${msg}`);if(!gmT)gmT=setTimeout(gmFlush,2500)}
-function gmFlush(keep){clearTimeout(gmT);gmT=null;if(!gmQ.length||HOOK.startsWith("__"))return;
+function gmFlush(keep){clearTimeout(gmT);gmT=null;if(!gmQ.length||HOOK.startsWith("__")||(whoOpen&&!keep))return;
   let chunk=[];const out=[];for(const l of gmQ){if((chunk.join("\n")+l).length>1800){out.push(chunk);chunk=[]}chunk.push(l)}if(chunk.length)out.push(chunk);gmQ=[];
-  out.forEach(c=>{try{fetch(HOOK,{method:"POST",mode:"no-cors",keepalive:!!keep,headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({username:"DubuqueUnited Audit · "+SID,content:c.join("\n"),allowed_mentions:{parse:[]}})}).catch(()=>{})}catch(e){}})}
+  out.forEach(c=>{try{fetch(HOOK,{method:"POST",mode:"no-cors",keepalive:!!keep,headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify({username:"DubuqueUnited Audit · "+(PN?PN+" ("+SID+")":SID),content:c.join("\n"),allowed_mentions:{parse:[]}})}).catch(()=>{})}catch(e){}})}
 const clean=t=>String(t).replace(/[`@]/g,"'").slice(0,500);
 const pname=id=>P[id]?P[id].name:id;
 function secs(){const s=Math.round((Date.now()-chartSince)/1000);return s<60?s+"s":Math.floor(s/60)+"m "+(s%60)+"s"}
@@ -455,6 +471,11 @@ $("btgGo").addEventListener("click",()=>{
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("btg").hidden)btgCancel("Esc")});
 let armed=false;
 $("resetBtn").addEventListener("click",e=>{if(!armed){armed=true;e.target.textContent="Click again to reset";setTimeout(()=>{armed=false;e.target.textContent="Reset session"},2500);return}gm(`🔄 **Reset session** (had ${S.log.length} opens, ${S.log.filter(l=>l.k!=="tx").length} flagged)`);S=JSON.parse(JSON.stringify(START));chartSince=Date.now();armed=false;e.target.textContent="Reset session";$("q").value="";renderAll()});
+function whoDone(n){n=clean(n).replace(/\s+/g," ").trim().slice(0,24);whoOpen=false;$("who").hidden=true;if(n){PN=n;try{localStorage.setItem("rb-name",n)}catch(e){}gm(`🙋 Player: **${n}**`)}gmFlush()}
+$("whoGo").addEventListener("click",()=>whoDone($("whoName").value));
+$("whoSkip").addEventListener("click",()=>whoDone(""));
+$("whoName").addEventListener("keydown",e=>{if(e.key==="Enter")whoDone($("whoName").value)});
+if(!PN){whoOpen=true;$("who").hidden=false;$("whoName").focus()}
 renderAll();
 gm(S.log.length>2?`▶️ **Session resumed** · ${S.log.length} opens so far, viewing ${pname(S.current)}`:`▶️ **New session started** · ${navigator.userAgent.includes("Mobile")?"mobile":"desktop"}`);
 </script>
